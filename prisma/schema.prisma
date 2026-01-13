@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Modelo de Clientes 
+model Cliente { 
+  id               String    @id @default(uuid()) 
+  nome             String 
+  whatsapp         String? 
+  dataCriacao      DateTime  @default(now()) 
+   
+  // Relação com os serviços 
+  servicos         Servico[] 
+
+  @@map("clientes") // Nome da tabela no banco em minúsculo 
+} 
+
+// Catálogo de tipos de serviços e preços base 
+model CatalogoServico { 
+  id          String    @id @default(uuid()) 
+  nome        String    // Ex: "Fazer Barra", "Ajuste de Cintura", "Confecção de Bolsa" 
+  precoBase   Decimal   @db.Decimal(10, 2) 
+  categoria   String    // Ex: "Reforma" ou "Confecção" 
+   
+  servicos    Servico[] 
+
+  @@map("catalogo_servicos") 
+} 
+
+// O registro de cada serviço individual 
+model Servico { 
+  id                  String   @id @default(uuid()) 
+  clienteId           String 
+  catalogoServicoId   String 
+  descricaoPeca       String 
+  valorCobrado        Decimal  @db.Decimal(10, 2) 
+  status              Status   @default(PENDENTE) 
+  dataEntrada         DateTime @default(now()) 
+  dataEntregaPrevista DateTime 
+  dataConclusao       DateTime? 
+  dataRetirada        DateTime? 
+
+  // Relações 
+  cliente             Cliente         @relation(fields: [clienteId], references: [id]) 
+  catalogoServico     CatalogoServico @relation(fields: [catalogoServicoId], references: [id]) 
+  transacoes          Transacao[]
+
+  @@map("servicos") 
+} 
+
+// Registro financeiro (Fluxo de Caixa) 
+model Transacao { 
+  id            String    @id @default(uuid()) 
+  valor         Decimal   @db.Decimal(10, 2) 
+  tipo          TipoTransacao
+  categoria     String 
+  data          DateTime  @default(now()) 
+  observacao    String? 
+
+// Campo opcional para vincular ao serviço
+  servicoId     String?
+  servico       Servico?  @relation(fields: [servicoId], references: [id])
+
+  @@map("transacoes") 
+} 
+
+// Opções fixas para evitar erros de digitação 
+enum Status { 
+  PENDENTE 
+  PRONTO          // Finalizado mas não retirado 
+  ENTREGUE        // Cliente buscou 
+  ATRASADO_RETIRADA // Caso passe de X dias 
+} 
+
+enum TipoTransacao { 
+  ENTRADA 
+  SAIDA 
+}
