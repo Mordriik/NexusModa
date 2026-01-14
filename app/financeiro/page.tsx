@@ -62,7 +62,7 @@ export default async function FinanceiroPage() {
             {/* Modal para Adicionar Despesa Manual */}
             <Dialog>
               <DialogTrigger asChild>
-                <Button className="bg-red-600 hover:bg-red-700 text-black">− Nova Despesa</Button>
+                <Button className="bg-red-600 hover:bg-red-700 text-white">− Nova Despesa</Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader><DialogTitle>Registrar Despesa / Saída</DialogTitle></DialogHeader>

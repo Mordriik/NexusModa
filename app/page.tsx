@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { signOut } from "@/auth"
 
 // Função auxiliar para formatar dinheiro
 const formatCurrency = (value: number) => {
@@ -43,6 +44,14 @@ export default async function Home() {
         <div>
           <h1 className="text-3xl font-bold text-slate-800">Ateliê Carmen Moda</h1>
           <p className="text-slate-500">Visão Geral do Dia</p>
+          <form action={async () => {
+            'use server'
+            await signOut()
+          }}>
+            <button className="text-xs text-red-500 hover:underline flex items-center gap-1 mt-1">
+              Sair do Sistema
+            </button>
+          </form>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <Link href="/servicos/novo" className="w-full md:w-auto">
