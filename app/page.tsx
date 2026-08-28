@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { signOut } from "@/auth"
 
 // Função auxiliar para formatar dinheiro
 const formatCurrency = (value: number) => {
@@ -17,64 +16,49 @@ const formatCurrency = (value: number) => {
 };
 
 export default async function Home() {
-  // 1. Busca serviços pendentes (O que ela tem para costurar hoje/amanhã)
-  const filaTrabalho = await prisma.servico.findMany({
+  // 1. Busca pedidos pendentes (O que ela tem para costurar hoje/amanhã)
+  const filaTrabalho = await prisma.pedido.findMany({
     where: { status: "PENDENTE" },
     orderBy: { dataEntregaPrevista: "asc" },
     include: { 
       cliente: true, 
-      catalogoServico: true 
+      itens: {
+        include: {
+          servicos: {
+            include: {
+              catalogoServico: true
+            }
+          }
+        }
+      }
     },
   });
 
-  // 2. Busca serviços prontos aguardando retirada (O "dinheiro parado")
-  const aguardandoRetirada = await prisma.servico.findMany({
+  // 2. Busca pedidos prontos aguardando retirada (O "dinheiro parado")
+  const aguardandoRetirada = await prisma.pedido.findMany({
     where: { status: "PRONTO" },
     orderBy: { dataEntregaPrevista: "asc" },
     include: { 
       cliente: true, 
-      catalogoServico: true 
+      itens: {
+        include: {
+          servicos: {
+            include: {
+              catalogoServico: true
+            }
+          }
+        }
+      }
     },
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 space-y-8">
-      {/* Cabeçalho com Botões de Ação */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Ateliê Carmen Moda</h1>
-          <p className="text-slate-500">Visão Geral do Dia</p>
-          <form action={async () => {
-            'use server'
-            await signOut()
-          }}>
-            <button className="text-xs text-red-500 hover:underline flex items-center gap-1 mt-1">
-              Sair do Sistema
-            </button>
-          </form>
-        </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <Link href="/servicos/novo" className="w-full md:w-auto">
-            <Button size="lg" className="w-full shadow-md bg-indigo-600 hover:bg-indigo-700 text-black">
-              + Novo Serviço
-            </Button>
-          </Link>
-          <Link href="/clientes" className="w-full md:w-auto">
-            <Button variant="outline" size="lg" className="w-full">
-              Clientes
-            </Button>
-          </Link>
-          <Link href="/catalogo" className="w-full md:w-auto">
-            <Button variant="outline" size="lg" className="w-full">
-              Catálogo
-            </Button>
-          </Link>
-          <Link href="/financeiro" className="w-full md:w-auto">
-            <Button variant="outline" size="lg" className="w-full">
-              💰 Financeiro
-            </Button>
-          </Link>
-        </div>
+    <div className="p-6 md:p-8 space-y-8">
+      
+      {/* Cabeçalho Limpo */}
+      <div>
+        <h1 className="text-3xl font-bold text-slate-800">Visão Geral do Dia</h1>
+        <p className="text-slate-500">Resumo de pedidos e entregas do ateliê.</p>
       </div>
 
       {/* Seção 1: Fila de Trabalho (Prioridade) */}
@@ -91,8 +75,8 @@ export default async function Home() {
               <TableRow>
                 <TableHead>Data Entrega</TableHead>
                 <TableHead>Cliente</TableHead>
-                <TableHead>Serviço</TableHead>
-                <TableHead>Descrição</TableHead>
+                <TableHead>Serviços Listados</TableHead>
+                <TableHead>Peças</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -105,23 +89,32 @@ export default async function Home() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filaTrabalho.map((item) => (
-                  <TableRow key={item.id}>
+                filaTrabalho.map((pedido) => (
+                  <TableRow key={pedido.id}>
                     <TableCell className="font-medium">
-                      {format(item.dataEntregaPrevista, "dd/MM/yyyy", { locale: ptBR })}
+                      {format(pedido.dataEntregaPrevista, "dd/MM/yyyy", { locale: ptBR })}
                     </TableCell>
-                    <TableCell>{item.cliente.nome}</TableCell>
+                    <TableCell>{pedido.cliente.nome}</TableCell>
+                    
+                    {/* Lista os serviços únicos de todas as roupas do pedido */}
                     <TableCell>
-                      <Badge variant="outline">{item.catalogoServico.nome}</Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(new Set(pedido.itens.flatMap(i => i.servicos.map(s => s.catalogoServico.nome)))).map((nomeSvc, idx) => (
+                          <Badge key={idx} variant="outline">{nomeSvc as string}</Badge>
+                        ))}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-slate-600 max-w-[200px] truncate">
-                      {item.descricaoPeca}
+
+                    {/* Lista as roupas do pedido */}
+                    <TableCell className="text-slate-600 max-w-50 truncate">
+                      {pedido.itens.map(i => i.descricaoPeca).join(", ")}
                     </TableCell>
+
                     <TableCell className="text-right font-bold text-slate-700">
-                      {formatCurrency(Number(item.valorCobrado))}
+                      {formatCurrency(Number(pedido.valorTotal))}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/servicos/${item.id}`}>
+                      <Link href={`/servicos/${pedido.id}`}>
                         <Button variant="ghost" size="sm">Detalhes</Button>
                       </Link>
                     </TableCell>
@@ -148,24 +141,30 @@ export default async function Home() {
                 <TableRow>
                   <TableHead>Prazo Original</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>Serviço</TableHead>
+                  <TableHead>Peças</TableHead>
                   <TableHead className="text-right">A Receber</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {aguardandoRetirada.map((item) => (
-                  <TableRow key={item.id} className="opacity-90 hover:opacity-100">
+                {aguardandoRetirada.map((pedido) => (
+                  <TableRow key={pedido.id} className="opacity-90 hover:opacity-100">
                     <TableCell>
-                      {format(item.dataEntregaPrevista, "dd/MM (EEE)", { locale: ptBR })}
+                      {format(pedido.dataEntregaPrevista, "dd/MM (EEE)", { locale: ptBR })}
                     </TableCell>
-                    <TableCell className="font-medium">{item.cliente.nome}</TableCell>
-                    <TableCell>{item.catalogoServico.nome}</TableCell>
+                    <TableCell className="font-medium">{pedido.cliente.nome}</TableCell>
+                    
+                    <TableCell>
+                      <span className="text-sm text-slate-600">
+                        {pedido.itens.length} peça(s)
+                      </span>
+                    </TableCell>
+
                     <TableCell className="text-right font-bold text-green-700">
-                      {formatCurrency(Number(item.valorCobrado))}
+                      {formatCurrency(Number(pedido.valorTotal))}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/servicos/${item.id}`}>
+                      <Link href={`/servicos/${pedido.id}`}>
                         <Button size="sm" variant="secondary">Entregar</Button>
                       </Link>
                     </TableCell>

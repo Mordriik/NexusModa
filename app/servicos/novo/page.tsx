@@ -10,14 +10,15 @@ export default async function NovoServicoPage() {
   // 2. CONVERSÃO: Transformamos o Decimal em number para o Frontend entender
   const catalogo = catalogoBruto.map((item) => ({
     ...item,
-    precoBase: item.precoBase.toNumber(), // <--- O segredo está aqui
+    precoBase: item.precoBase.toNumber(),
   }))
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 flex justify-center items-start">
-      <Card className="w-full max-w-2xl">
+    <div className="p-6 md:p-8 flex justify-center items-start">
+      {/* Aumentei o max-w-4xl para caberem melhor os cards duplos do formulário */}
+      <Card className="w-full max-w-4xl shadow-sm border-slate-200">
         <CardHeader>
-          <CardTitle>Registrar Novo Serviço</CardTitle>
+          <CardTitle className="text-2xl text-slate-800">Registrar Novo Pedido</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Agora passamos a lista higienizada (com números simples) */}

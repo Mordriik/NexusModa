@@ -6,15 +6,30 @@ import { revalidatePath } from 'next/cache';
 export async function criarItemCatalogo(formData: FormData) {
   const nome = formData.get('nome') as string;
   const precoBase = parseFloat(formData.get('precoBase') as string);
-  const categoria = formData.get('categoria') as string;
+  const categoriaId = formData.get('categoriaId') as string;
 
-  if (!nome || !precoBase) return
+  if (!nome || !precoBase || !categoriaId) return;
   
   await prisma.catalogoServico.create({
-    data: { nome, precoBase, categoria },
+    data: { 
+      nome, 
+      precoBase, 
+      categoriaId 
+    },
   });
 
-  revalidatePath('/catalogo'); // Atualiza a página automaticamente
+  revalidatePath('/catalogo');
+}
+
+export async function criarCategoriaRapida(nome: string) {
+  if (!nome.trim()) throw new Error("Nome da categoria é obrigatório");
+
+  const categoria = await prisma.categoria.create({
+    data: { nome: nome.trim() }
+  });
+
+  revalidatePath('/catalogo');
+  return categoria;
 }
 
 export async function excluirItemCatalogo(id: string) {

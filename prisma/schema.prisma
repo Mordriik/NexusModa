@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,44 +13,77 @@ model Cliente {
   whatsapp         String? 
   dataCriacao      DateTime  @default(now()) 
    
-  // Relação com os serviços 
-  servicos         Servico[] 
+  pedidos          Pedido[] 
 
-  @@map("clientes") // Nome da tabela no banco em minúsculo 
+  @@map("clientes") 
 } 
+
+// Modelo de Categorias do Catálogo
+model Categoria {
+  id               String            @id @default(uuid())
+  nome             String            @unique // Ex: "Reforma", "Confecção", "Bordado"
+  catalogoServicos CatalogoServico[]
+
+  @@map("categorias")
+}
 
 // Catálogo de tipos de serviços e preços base 
 model CatalogoServico { 
-  id          String    @id @default(uuid()) 
-  nome        String    // Ex: "Fazer Barra", "Ajuste de Cintura", "Confecção de Bolsa" 
-  precoBase   Decimal   @db.Decimal(10, 2) 
-  categoria   String    // Ex: "Reforma" ou "Confecção" 
+  id          String        @id @default(uuid()) 
+  nome        String        // Ex: "Fazer Barra", "Ajuste de Cintura"
+  precoBase   Decimal       @db.Decimal(10, 2) 
+  
+  categoriaId String
+  categoria   Categoria     @relation(fields: [categoriaId], references: [id])
    
-  servicos    Servico[] 
+  servicosItem ServicoItem[] 
 
   @@map("catalogo_servicos") 
 } 
 
-// O registro de cada serviço individual 
-model Servico { 
-  id                  String   @id @default(uuid()) 
+// NÍVEL 1: A Ordem de Serviço (Mestre)
+model Pedido { 
+  id                  String       @id @default(uuid()) 
   clienteId           String 
-  catalogoServicoId   String 
-  descricaoPeca       String 
-  valorCobrado        Decimal  @db.Decimal(10, 2) 
-  status              Status   @default(PENDENTE) 
-  dataEntrada         DateTime @default(now()) 
+  valorTotal          Decimal      @db.Decimal(10, 2) 
+  status              Status       @default(PENDENTE) 
+  dataEntrada         DateTime     @default(now()) 
   dataEntregaPrevista DateTime 
   dataConclusao       DateTime? 
   dataRetirada        DateTime? 
 
-  // Relações 
-  cliente             Cliente         @relation(fields: [clienteId], references: [id]) 
-  catalogoServico     CatalogoServico @relation(fields: [catalogoServicoId], references: [id]) 
+  cliente             Cliente      @relation(fields: [clienteId], references: [id]) 
+  itens               ItemPedido[]
   transacoes          Transacao[]
 
-  @@map("servicos") 
+  @@map("pedidos") 
 } 
+
+// NÍVEL 2: A Peça de Roupa (Detalhe)
+model ItemPedido {
+  id            String        @id @default(uuid())
+  pedidoId      String
+  descricaoPeca String        
+  observacoes   String?       
+
+  pedido        Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  servicos      ServicoItem[] 
+
+  @@map("itens_pedido")
+}
+
+// NÍVEL 3: Os serviços escolhidos para cada Peça
+model ServicoItem {
+  id                String          @id @default(uuid())
+  itemPedidoId      String
+  catalogoServicoId String
+  precoCobrado      Decimal         @db.Decimal(10, 2) 
+
+  itemPedido        ItemPedido      @relation(fields: [itemPedidoId], references: [id], onDelete: Cascade)
+  catalogoServico   CatalogoServico @relation(fields: [catalogoServicoId], references: [id])
+
+  @@map("servicos_item")
+}
 
 // Registro financeiro (Fluxo de Caixa) 
 model Transacao { 
@@ -67,19 +94,28 @@ model Transacao {
   data          DateTime  @default(now()) 
   observacao    String? 
 
-// Campo opcional para vincular ao serviço
-  servicoId     String?
-  servico       Servico?  @relation(fields: [servicoId], references: [id])
+  pedidoId      String?
+  pedido        Pedido?   @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
   @@map("transacoes") 
 } 
 
-// Opções fixas para evitar erros de digitação 
+// NOVO: Modelos de Mensagens para WhatsApp
+model ModeloMensagem {
+  id           String    @id @default(uuid())
+  titulo       String    // Ex: "Aviso de Pedido Pronto", "Confirmação de Entrada"
+  conteudo     String    // Texto com placeholders: {cliente}, {pecas}, {valor}, {prazo}
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  @@map("modelos_mensagem")
+}
+
 enum Status { 
   PENDENTE 
-  PRONTO          // Finalizado mas não retirado 
-  ENTREGUE        // Cliente buscou 
-  ATRASADO_RETIRADA // Caso passe de X dias 
+  PRONTO            
+  ENTREGUE          
+  ATRASADO_RETIRADA 
 } 
 
 enum TipoTransacao { 

@@ -4,35 +4,70 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-export async function marcarComoPronto(id: string) {
-  await prisma.servico.update({
+export async function marcarComoPronto(formData: FormData) {
+  const id = formData.get("id") as string
+  if (!id) return
+
+  await prisma.pedido.update({
     where: { id },
     data: {
       status: 'PRONTO',
-      dataConclusao: new Date() // Salva a data exata que a roupa ficou pronta
+      dataConclusao: new Date()
     }
   })
 
-  // Atualiza a visualização da tela de detalhes e da Home
   revalidatePath(`/servicos/${id}`)
   revalidatePath('/')
-  // Não redirecionamos aqui para ela poder conferir que mudou o status
 }
 
-export async function marcarComoEntregue(id: string) {
-  // 1. Buscamos o serviço primeiro para saber o valor
-  const servico = await prisma.servico.findUnique({
+export async function marcarComoEntregue(formData: FormData) {
+  const id = formData.get("id") as string
+  if (!id) return
+
+  const pedido = await prisma.pedido.findUnique({
     where: { id },
-    select: { valorCobrado: true, descricaoPeca: true }
+    include: {
+      cliente: true,
+      itens: {
+        include: {
+          servicos: {
+            include: {
+              catalogoServico: {
+                include: {
+                  categoria: true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   })
 
-  if (!servico) throw new Error("Serviço não encontrado")
+  if (!pedido) throw new Error("Pedido não encontrado")
 
-  // 2. Transação Atômica: Atualiza o serviço E lança no financeiro ao mesmo tempo
-  // Usamos o $transaction para garantir que ou faz os dois, ou não faz nenhum (segurança de dados)
+  const categoriasSet = new Set<string>()
+  pedido.itens.forEach(item => {
+    item.servicos.forEach(s => {
+      if (s.catalogoServico?.categoria?.nome) {
+        categoriasSet.add(s.catalogoServico.categoria.nome)
+      }
+    })
+  })
+
+  const categoriasArray = Array.from(categoriasSet)
+  let rotuloCategoria = "Serviço"
+
+  if (categoriasArray.length === 1) {
+    rotuloCategoria = categoriasArray[0]
+  } else if (categoriasArray.length > 1) {
+    rotuloCategoria = "Misto"
+  }
+
+  const descricaoFormatada = `${rotuloCategoria}: ${pedido.cliente.nome}`
+
   await prisma.$transaction([
-    // A. Atualiza o status do serviço
-    prisma.servico.update({
+    prisma.pedido.update({
       where: { id },
       data: {
         status: 'ENTREGUE',
@@ -40,18 +75,18 @@ export async function marcarComoEntregue(id: string) {
       }
     }),
 
-    // B. Cria a entrada no Caixa
     prisma.transacao.create({
       data: {
         tipo: 'ENTRADA',
-        valor: servico.valorCobrado,
+        valor: pedido.valorTotal,
         categoria: 'Recebimento de Serviço',
-        observacao: `Recebimento: ${servico.descricaoPeca}`,
-        servicoId: id // Vincula o dinheiro ao serviço
+        observacao: descricaoFormatada,
+        pedidoId: id
       }
     })
   ])
 
+  revalidatePath('/financeiro')
   revalidatePath('/')
-  redirect('/') // Volta para a home pois o serviço foi finalizado
+  redirect('/')
 }

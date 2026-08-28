@@ -8,113 +8,157 @@ import { ptBR } from "date-fns/locale"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-// Import das actions (certifique-se de que o arquivo actions.ts existe, 
-// mesmo que vazio por enquanto, para não dar erro de import)
 import { marcarComoPronto, marcarComoEntregue } from "./actions"
+import { ModalNotificarWhatsApp } from "./modal-notificar"
 
-// 1. Mudança na Tipagem: params agora é uma Promise
 export default async function DetalhesServicoPage({ params }: { params: Promise<{ id: string }> }) {
-  
-  // 2. Mudança na Lógica: Precisamos esperar (await) os parâmetros chegarem
   const resolvedParams = await params
   const id = resolvedParams.id
   
-  const servico = await prisma.servico.findUnique({
-    where: { id },
-    include: { cliente: true, catalogoServico: true }
-  })
+  const [pedido, modelosBrutos] = await Promise.all([
+    prisma.pedido.findUnique({
+      where: { id },
+      include: { 
+        cliente: true,
+        itens: {
+          include: {
+            servicos: {
+              include: {
+                catalogoServico: true
+              }
+            }
+          }
+        }
+      }
+    }),
+    prisma.modeloMensagem.findMany({
+      orderBy: { criadoEm: 'asc' }
+    })
+  ])
 
-  if (!servico) return notFound()
+  if (!pedido) return notFound()
+
+  const modelosSanitizados = modelosBrutos.map(m => ({
+    id: m.id,
+    titulo: m.titulo,
+    conteudo: m.conteudo
+  }))
+
+  const pecasNomes = pedido.itens.map(i => i.descricaoPeca)
+  const prazoFormatado = pedido.dataEntregaPrevista 
+    ? format(new Date(pedido.dataEntregaPrevista), "dd 'de' MMMM", { locale: ptBR }) 
+    : "-"
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 flex justify-center items-start">
-      <Card className="w-full max-w-2xl">
-        <CardHeader className="bg-slate-100 rounded-t-xl border-b">
+    <div className="p-6 md:p-8 flex justify-center items-start">
+      <Card className="w-full max-w-3xl shadow-sm border-slate-200">
+        <CardHeader className="bg-slate-50 rounded-t-xl border-b border-slate-200">
           <div className="flex justify-between items-center">
-             <CardTitle className="text-xl">Detalhes do Serviço</CardTitle>
-             {/* Lógica visual de cores para o badge */}
+             <CardTitle className="text-xl text-slate-800">Detalhes do Pedido</CardTitle>
              <Badge className={
-               servico.status === 'PENDENTE' ? 'bg-blue-600' :
-               servico.status === 'PRONTO' ? 'bg-green-600' : 'bg-slate-500'
+               pedido.status === 'PENDENTE' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+               pedido.status === 'PRONTO' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 
+               'bg-emerald-100 text-emerald-800 border-emerald-200'
              }>
-               {servico.status}
+               {pedido.status}
              </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
           
-          {/* Dados do Cliente */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-slate-500 font-medium">Cliente</p>
-              <p className="text-lg font-bold">{servico.cliente.nome}</p>
+              <p className="text-lg font-bold text-slate-800">{pedido.cliente?.nome || "Sem Nome"}</p>
             </div>
             <div>
-               <p className="text-sm text-slate-500 font-medium">Whatsapp</p>
-               {servico.cliente.whatsapp ? (
+               <p className="text-sm text-slate-500 font-medium">WhatsApp</p>
+               {pedido.cliente?.whatsapp ? (
                  <Link 
-                   href={`https://wa.me/55${servico.cliente.whatsapp.replace(/\D/g, '')}`} 
+                   href={`https://wa.me/55${pedido.cliente.whatsapp.replace(/\D/g, '')}`} 
                    target="_blank"
                    className="text-green-600 hover:underline font-medium flex items-center gap-1"
                  >
-                   {servico.cliente.whatsapp} ↗
+                   {pedido.cliente.whatsapp} ↗
                  </Link>
                ) : (
                  <p className="text-slate-400">-</p>
                )}
             </div>
+            <div>
+              <p className="text-sm text-slate-500 font-medium">Prazo de Entrega</p>
+              <p className="font-medium text-slate-700">{prazoFormatado}</p>
+            </div>
           </div>
 
           <Separator />
 
-          {/* Dados do Serviço */}
           <div>
-            <p className="text-sm text-slate-500 font-medium mb-1">Peça / Descrição</p>
-            <p className="text-slate-800 bg-slate-50 p-3 rounded-md border">
-              {servico.descricaoPeca}
-            </p>
-          </div>
+            <h3 className="text-sm text-slate-500 font-medium mb-3">
+              Itens do Pedido ({pedido.itens.length})
+            </h3>
+            <div className="space-y-4">
+              {pedido.itens.map((item, index) => (
+                <div key={item.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                  <p className="font-bold text-slate-800">{index + 1}. {item.descricaoPeca}</p>
+                  
+                  {item.observacoes && (
+                    <p className="text-sm text-slate-600 italic bg-white p-2 rounded border border-slate-100">
+                      📝 &quot;{item.observacoes}&quot;
+                    </p>
+                  )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-slate-500 font-medium">Tipo</p>
-              <p>{servico.catalogoServico.nome}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 font-medium">Prazo</p>
-              <p>{format(servico.dataEntregaPrevista, "dd 'de' MMMM", { locale: ptBR })}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {item.servicos.map(servico => (
+                      <Badge key={servico.id} variant="secondary" className="font-normal text-xs bg-atelier-light text-atelier-primary border border-purple-200/60">
+                        {servico.catalogoServico?.nome || "Serviço"} (R$ {Number(servico.precoCobrado).toFixed(2)})
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           
-          <div className="bg-slate-900 text-white p-4 rounded-lg flex justify-between items-center">
-            <span>Valor Total</span>
-            <span className="text-xl font-bold">
-              R$ {Number(servico.valorCobrado).toFixed(2)}
+          <div className="bg-atelier-primary text-white p-4 rounded-lg flex justify-between items-center shadow-md">
+            <span className="font-medium text-purple-200">Valor Total do Pedido</span>
+            <span className="text-2xl font-bold">
+              R$ {Number(pedido.valorTotal).toFixed(2)}
             </span>
           </div>
 
         </CardContent>
         <CardFooter className="flex flex-col gap-3 bg-slate-50 rounded-b-xl border-t p-6">
           
-          {/* Botões de Ação Condicionais */}
-          {servico.status === 'PENDENTE' && (
-            <form action={marcarComoPronto.bind(null, id)} className="w-full">
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-black" size="lg">
+          {pedido.status === 'PENDENTE' && (
+            <form action={marcarComoPronto} className="w-full">
+              <input type="hidden" name="id" value={id} />
+              <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm" size="lg">
                 ✅ Marcar como PRONTO
               </Button>
             </form>
           )}
 
-          {servico.status === 'PRONTO' && (
-            <form action={marcarComoEntregue.bind(null, id)} className="w-full">
-              <Button className="w-full bg-green-600 hover:bg-green-700 text-black" size="lg">
+          {pedido.status === 'PRONTO' && (
+            <form action={marcarComoEntregue} className="w-full">
+              <input type="hidden" name="id" value={id} />
+              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm" size="lg">
                 💰 Receber e Entregar
               </Button>
             </form>
           )}
 
+          <ModalNotificarWhatsApp 
+            clienteNome={pedido.cliente?.nome || ""}
+            clienteWhatsapp={pedido.cliente?.whatsapp || null}
+            pecas={pecasNomes}
+            valorTotal={Number(pedido.valorTotal)}
+            prazoFormatado={prazoFormatado}
+            modelos={modelosSanitizados}
+          />
+
           <Link href="/" className="w-full">
-            <Button variant="outline" className="w-full">Voltar</Button>
+            <Button variant="outline" className="w-full">Voltar para a Home</Button>
           </Link>
           
         </CardFooter>
