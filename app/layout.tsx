@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { auth } from "@/auth";
-//@ts-expect-error - Ajuste de tipo para layouts do Next.js
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
